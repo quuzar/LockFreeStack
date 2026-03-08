@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="LockFreeStack/LockFreeStack.vcxproj" Id="ef8b6448-0e9e-40f1-b15f-e82c9dddc426" />
+</Solution>
