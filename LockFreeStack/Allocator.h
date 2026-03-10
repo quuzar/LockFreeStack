@@ -9,17 +9,20 @@
 template<typename T>
 class Allocator {
 public:
+	Allocator() {
+	}
+
 	void _create_table() {
 		flag_create_table.store(true);
 		Table<T>* _t{};
 		try {
 			_t = new Table<T>();
 			{
-				std::shared_lock lock(vector_mutex);
+				std::unique_lock lock(vector_mutex);
 				tables.push_back(_t);
 			}
 		}
-		catch(auto e) {
+		catch(...) {
 			if (!_t) delete _t;
 			flag_create_table.store(false);
 			throw std::runtime_error("error create table");
@@ -85,11 +88,12 @@ private:
 	static inline std::atomic<uint16_t> number_table{0};
 	static inline std::atomic<uint16_t> offset{0};
 	static inline std::atomic<uint32_t> counter{0};
-	static inline std::atomic<bool> flag_create_table{ false };
-	static inline std::mutex table_mutex{};
-	static inline std::shared_mutex vector_mutex{};
-	Table<T>* current_table;
-	std::vector<Table<T>*> tables;
-	static constexpr size_t value_size = sizeof(T);
-	static constexpr size_t max_offset = 4096 / value_size;
+
+	static inline constexpr size_t value_size = sizeof(T);
+	static inline constexpr size_t max_offset = 256 / value_size;
+	static inline constexpr Table<T> tables[4096];
+	static inline thread_local Table<T> table;
+
+	static inline Table<T>* current_table;
+	static inline thread_local std::vector<T> thread_tables{4};
 };

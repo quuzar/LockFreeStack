@@ -29,7 +29,7 @@ public:
 	T pop() {
 		while (true) {
 			StackNode* s_head = head.load();
-			//if (!s_head) throw "empty";
+			if (!s_head) throw "empty";
 			hazard_pointer[tl.id].store(s_head);
 			StackNode* s_node = s_head->prev.load();
 

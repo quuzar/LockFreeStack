@@ -1,19 +1,12 @@
 #include "Stack.h"
 #include <iostream>
+#include <thread>
+#include <chrono>
+#include <stack>
+#include <mutex>
+
 
 int main() {
-	LockStack<int> stack{};
-	stack.push(10);
-	stack.push(20);
-	stack.push(30);
-	stack.push(40);
-	stack.push(50);
-
-	std::cout << stack.pop() << std::endl;
-	std::cout << stack.pop() << std::endl;
-	std::cout << stack.pop() << std::endl;
-	std::cout << stack.pop() << std::endl;
-	std::cout << stack.pop() << std::endl;
-
+	std::cout << (1ULL << 5) << std::endl;
 	return 0;
 }
