@@ -1,99 +1,84 @@
 #pragma once
 #include <atomic>
-#include <vector>
-#include <mutex>
 #include <thread>
-#include <shared_mutex>
+#include <array>
+
 #include "Structs.h"
 
 template<typename T>
 class Allocator {
 public:
-	Allocator() {
+	Allocator() = default;
+	Allocator(uint8_t id_thread) {
+		for (int i = 0; i < 16; i++) {
+			tables[i] = &pool_tables[i + id_thread*16];
+			thread_id = id_thread;
+		}
 	}
 
-	void _create_table() {
-		flag_create_table.store(true);
-		Table<T>* _t{};
-		try {
-			_t = new Table<T>();
-			{
-				std::unique_lock lock(vector_mutex);
-				tables.push_back(_t);
-			}
+	Node allocate(T value) {
+		if (offset < max_offset) {
+			uint16_t id_offset = offset++;
+			tables[number_table]->add_value(value, id_offset);
+			uint16_t _num_tab = number_table + (thread_id * 16);
+			return { counter.fetch_add(1, std::memory_order_acq_rel), {_num_tab, id_offset}};
 		}
-		catch(...) {
-			if (!_t) delete _t;
-			flag_create_table.store(false);
-			throw std::runtime_error("error create table");
+
+		uint16_t free_offset = tables[number_table]->search();
+		if (free_offset < max_offset) {
+			tables[number_table]->add_value(value, free_offset);
+			uint16_t _num_tab = number_table + (thread_id * 16);
+			return { counter.fetch_add(1, std::memory_order_acq_rel), {_num_tab, free_offset} };
 		}
-		flag_create_table.store(false);
-	}
 
-	Node* allocate(T value) {
-		while (true) {
-			uint16_t _table = number_table.load();
-			uint16_t _offset = offset.fetch_add(1);
+		++number_table;
 
-			if (_offset >= max_offset) {
-				offset.fetch_sub(1);
-				{
-					std::lock_guard<std::mutex> lock(table_mutex);
-					while (flag_create_table.load()) {
-						std::this_thread::yield();
-					}
-
-					if (_table != number_table.load()) {
-						continue;
-					}
-
-					std::thread thr {&Allocator::_create_table, this }; // Используем в это время запасную таблицу
-					thr.detach();
-
-					number_table.fetch_add(1);
-					offset.store(1);
-				}
-				++_table;
-				_offset = 0;
-			}
-
-			{
-				std::shared_lock lock(vector_mutex);
-				tables[_table]->add_value(value, _offset);
-			}
-
-			Node* node = new Node();
-
-			node->table = _table;
-			node->offset = _offset;
-			node->counter = counter.fetch_add(1);
-
-			return node;
+		if (number_table < max_tables) {
+			offset = 1;
+			tables[number_table]->add_value(value, 0);
+			uint16_t _num_tab = number_table + (thread_id * 16);
+			return { counter.fetch_add(1, std::memory_order_acq_rel), {_num_tab, 0} };
 		}
+
+		return { counter.fetch_add(1, std::memory_order_acq_rel), _search_offset() };
 	}
 	
-	T deallocate(Node* node) {
-		std::shared_lock lock(vector_mutex);
-		T value = tables[node->table]->get_value(node->offset);
-		delete node;
-		return value;
+	T deallocate(Node node) {
+		uint16_t _tbl = node.position.table;
+		uint16_t _off = node.position.offset;
+
+		T _value = pool_tables[_tbl].ret_value(_off);
+
+		return _value;
 	}
 	
-	~Allocator() {
-		for (auto table : tables)
-			delete table;
+	Position _search_offset() {
+		for (uint16_t id_table = 0; Table<T>* _table : tables) {
+			uint16_t _offset = _table->search();
+			if (_offset < max_offset) {
+				return { static_cast<uint16_t>(id_table + thread_id * max_tables), _offset };
+			}
+			++id_table;
+		}
+
+		throw "table overflow";
 	}
+
+	~Allocator() = default;
 
 private:
-	static inline std::atomic<uint16_t> number_table{0};
-	static inline std::atomic<uint16_t> offset{0};
-	static inline std::atomic<uint32_t> counter{0};
+	static inline std::atomic<uint32_t> counter{0};							// Глобальный счетчик
 
-	static inline constexpr size_t value_size = sizeof(T);
-	static inline constexpr size_t max_offset = 256 / value_size;
-	static inline constexpr Table<T> tables[4096];
-	static inline thread_local Table<T> table;
+	static inline constexpr size_t value_size = sizeof(T);					// Размер типа
+	static inline constexpr uint8_t max_offset = 64;						// MAX элементов в таблице
+	static inline constexpr uint8_t max_tables = 16;
+	static inline constexpr size_t max_pool_t = 4096;
 
-	static inline Table<T>* current_table;
-	static inline thread_local std::vector<T> thread_tables{4};
+	static inline std::array<Table<T>, max_pool_t> pool_tables;				// Глобальный пул таблиц
+		
+	alignas(64) uint8_t thread_id { 0 };
+	alignas(16) uint16_t number_table{ 0 };									// Локальный счетчик текущей таблицы
+	uint16_t offset{ 0 };													// Локальный счетчик текущего смещения
+	
+	std::array<Table<T>*, 16> tables;										// Локальный список таблиц
 };
