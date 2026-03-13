@@ -129,10 +129,12 @@
   <ItemGroup>
     <ClInclude Include="Allocator.h" />
     <ClInclude Include="Structs.h" />
-    <ClInclude Include="Stack.h" />
+    <ClInclude Include="LockFreeStack.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="allocator_test.cpp" />
+    <ClCompile Include="allocator_test.h" />
+    <ClCompile Include="lockfreestack_test.h" />
+    <ClCompile Include="test.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

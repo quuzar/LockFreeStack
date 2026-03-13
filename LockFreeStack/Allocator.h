@@ -11,10 +11,35 @@ public:
     Allocator() = default;
 
     Allocator(uint8_t id_thread) : _current_thread_id(id_thread) {
+        static_assert(MAX_THREADS <= 256);
         if (id_thread >= MAX_THREADS) throw std::runtime_error("invalid thread id");
         for (uint16_t i = 0; i < MAX_TABLES; ++i) {
             _tables[i] = &global_pool[id_thread * MAX_TABLES + i];
         }
+    }
+
+    Allocator& operator=(const Allocator& other) {
+        if (this != &other) {
+            _current_thread_id = other._current_thread_id;
+            _current_table.store(other._current_table.load());
+            _flag_tables.store(other._flag_tables.load());
+            for (uint16_t i = 0; i < MAX_TABLES; ++i) {
+                _tables[i].store(other._tables[i].load());
+            }
+        }
+        return *this;
+    }
+
+    Allocator& operator=(Allocator&& other) noexcept {
+        if (this != &other) {
+            _current_thread_id = other._current_thread_id;
+            _current_table.store(other._current_table.load());
+            _flag_tables.store(other._flag_tables.load());
+            for (uint16_t i = 0; i < MAX_TABLES; ++i) {
+                _tables[i].store(other._tables[i].load());
+            }
+        }
+        return *this;
     }
 
     inline Node allocate(T value) {
@@ -45,13 +70,12 @@ public:
     }
 
     T deallocate(Node node) {
-        uint16_t table = node.position.table;
-        return global_pool[table].get_value(node.position.offset);
+        return global_pool[node.position.table].get_value(node.position.offset);
     }
 
     static inline constexpr uint16_t MAX_TABLES = 32;
     static inline constexpr uint16_t MAX_THREADS = 256;
-    static inline constexpr uint16_t MAX_OFFSET = 128;
+    static inline constexpr uint16_t MAX_OFFSET = Table<T>::SIZE;
     static inline constexpr uint16_t POOL_SIZE = MAX_THREADS * MAX_TABLES;
 
 private:

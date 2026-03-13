@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -6,9 +7,12 @@
 #include <cassert>
 #include "Allocator.h"
 
+
+
 // ============================================================
 // ТЕСТ 1: Базовый LIFO порядок
-void test_basic() {
+
+static void alloc_test_basic() {
     std::cout << "[1] Basic alloc/dealloc... ";
 
     Allocator<int> alloc(0);
@@ -26,7 +30,7 @@ void test_basic() {
 
 // ============================================================
 // ТЕСТ 2: Заполнение одной таблицы (128 элементов)
-void test_fill_table() {
+static void alloc_test_fill_table() {
     std::cout << "[2] Fill one table (128 items)... ";
 
     Allocator<int> alloc(0);
@@ -48,7 +52,7 @@ void test_fill_table() {
 
 // ============================================================
 // ТЕСТ 3: Заполнение всех таблиц потока (32 * 128 = 4096 элементов)
-void test_fill_all() {
+static void alloc_test_fill_all() {
     std::cout << "[3] Fill all thread tables (4096 items)... ";
 
     Allocator<int> alloc(0);
@@ -77,7 +81,7 @@ void test_fill_all() {
 
 // ============================================================
 // ТЕСТ 4: Два потока, разные аллокаторы
-void test_two_threads() {
+static void alloc_test_two_threads() {
     std::cout << "[4] Two threads, separate allocators... ";
 
     std::atomic<int> sum{ 0 };
@@ -96,8 +100,8 @@ void test_two_threads() {
         Allocator<int> alloc(1);
         for (int i = 2000; i < 4000; ++i) {
             Node node = alloc.allocate(i);
-            arr2[i-2000] = alloc.deallocate(node);
-            sum += arr2[i-2000];
+            arr2[i - 2000] = alloc.deallocate(node);
+            sum += arr2[i - 2000];
         }
         });
 
@@ -115,7 +119,7 @@ void test_two_threads() {
 
 // ============================================================
 // ТЕСТ 5: Четыре потока, общий счётчик
-void test_four_threads() {
+static void alloc_test_four_threads() {
     std::cout << "[5] Four threads, shared counter... ";
 
     constexpr int THREADS = 4;
@@ -146,7 +150,7 @@ void test_four_threads() {
 
 // ============================================================
 // ТЕСТ 6: 128 потоков — проверка на прочность
-void test_heavy() {
+static void alloc_test_heavy() {
     std::cout << "[6] 128 threads, light load... ";
 
     constexpr int THREADS = 128;
@@ -176,13 +180,13 @@ void test_heavy() {
 }
 
 // ============================================================
-int main() {
-    test_basic();
-    test_fill_table();
-    test_fill_all();
-    test_two_threads();
-    test_four_threads();
-    test_heavy();
+static int allocator_test() {
+    alloc_test_basic();
+    alloc_test_fill_table();
+    alloc_test_fill_all();
+    alloc_test_two_threads();
+    alloc_test_four_threads();
+    alloc_test_heavy();
 
     std::cout << "\nALL ALLOCATOR TESTS PASSED\n";
     return 0;

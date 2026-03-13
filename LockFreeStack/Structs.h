@@ -38,50 +38,6 @@ struct StackNode {
 	~StackNode() = default;
 };
 
-struct RW_spinlock {
-	std::atomic<uint16_t> count{ 0 };
-	std::atomic<bool> flag{ false };
-
-	inline void lock_read() {
-		bool _f{ false };
-		while (true) {
-			count.fetch_add(1, std::memory_order_release);
-
-			if (flag.compare_exchange_weak(_f, false, std::memory_order_acq_rel)) {
-				return;
-			}
-			_f = false;
-			count.fetch_sub(1, std::memory_order_acq_rel);
-			std::this_thread::yield();
-			std::this_thread::yield();
-		}
-	}
-
-	inline void unlock_read() {
-		count.fetch_sub(1, std::memory_order_release);
-	}
-
-	inline void lock_write() {
-		bool _f{ false };
-		while (true) {
-			if (!flag.compare_exchange_weak(_f, true, std::memory_order_acq_rel)) {
-				_f = false;
-				std::this_thread::yield();
-				continue;
-			}
-			if (count.load(std::memory_order_acquire) == 0) {
-				return;  
-			}
-			flag.store(false, std::memory_order_release);
-			std::this_thread::yield();
-		}
-	}
-
-	inline void unlock_write() {
-		flag.store(false, std::memory_order_release);
-	}
-};
-
 struct write_spinlock {
 	inline void lock() {
 		bool expected = false;
