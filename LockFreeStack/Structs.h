@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <queue>
 #include <bit>
 
 struct Position {
@@ -81,38 +82,70 @@ struct RW_spinlock {
 	}
 };
 
+struct write_spinlock {
+	inline void lock() {
+		bool expected = false;
+		while (!_flag.compare_exchange_weak(expected, true, std::memory_order_acq_rel)) {
+			expected = false;
+			std::this_thread::yield();
+		}
+	}
+
+	inline void unlock() {
+		_flag.store(false, std::memory_order_release);
+	}
+private:
+	std::atomic<bool> _flag;
+};
+
 template<typename T>
-struct alignas(64 * sizeof(T)) Table {
-	std::atomic<uint64_t> free_mask{ ~0ULL };  // 1 = свободно
-	std::array<T, 64> nodes{};
+struct alignas(128) Table {
+	static constexpr uint16_t SIZE = 128;
 
 	Table() = default;
 
 	inline uint16_t search() {
-		uint64_t mask = free_mask.load(std::memory_order_acquire);
-		return std::countr_zero(mask); 
+		uint16_t _free_offset;
+		_queue_spin.lock();
+		if (free_nodes.empty()) {
+			_free_offset = SIZE;
+		}
+		else {
+			_free_offset = free_nodes.front();
+			free_nodes.pop();
+		}
+		_queue_spin.unlock();
+		return _free_offset;
 	}
 
-	inline void add_value(T value, uint16_t offset) {
-		rw_spin.lock_write();
-		free_mask.fetch_and((~(1ULL << offset)), std::memory_order_release);
-		nodes[offset] = value;
-		rw_spin.unlock_write();
+	inline void set_value(T value, uint16_t offset) {
+		nodes[offset].store(value, std::memory_order_release);
 	}
 
-	inline T _get_value(uint16_t offset) {
-		return nodes[offset];
-	}
-
-	inline T ret_value(uint16_t offset) {
-		free_mask.fetch_or( (0ULL | 1ULL << offset), std::memory_order_release);
-		rw_spin.lock_read();
-		T _value = _get_value(offset);
-		rw_spin.unlock_read();
+	inline T get_value(uint16_t offset) {
+		T _value = nodes[offset].load(std::memory_order_acquire);
+		_queue_spin.lock();
+		free_nodes.push(offset);
+		_queue_spin.unlock();
 		return _value;
 	}
 
-	~Table() = default;
+	inline uint16_t next() {
+		uint16_t _next_offset = next_free.fetch_add(1, std::memory_order_release);
+		if (_next_offset < SIZE)
+			return _next_offset;
+		next_free.fetch_sub(1, std::memory_order_release);
+		return search();
+	}
+private:
+	write_spinlock _queue_spin{};
 
-	RW_spinlock rw_spin{};
+	std::atomic<uint16_t> next_free{ 0 };
+	std::array<std::atomic<T>, SIZE> nodes;
+	std::queue<uint16_t> free_nodes;
 };
+
+static std::ostream& operator<<(std::ostream& os, Node node) {
+	os << node.position.table << ":" << node.position.offset;
+	return os;
+}

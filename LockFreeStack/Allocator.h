@@ -8,77 +8,65 @@
 template<typename T>
 class Allocator {
 public:
-	Allocator() = default;
-	Allocator(uint8_t id_thread) {
-		for (int i = 0; i < 16; i++) {
-			tables[i] = &pool_tables[i + id_thread*16];
-			thread_id = id_thread;
-		}
-	}
+    Allocator() = default;
 
-	Node allocate(T value) {
-		if (offset < max_offset) {
-			uint16_t id_offset = offset++;
-			tables[number_table]->add_value(value, id_offset);
-			uint16_t _num_tab = number_table + (thread_id * 16);
-			return { counter.fetch_add(1, std::memory_order_acq_rel), {_num_tab, id_offset}};
-		}
+    Allocator(uint8_t id_thread) : _current_thread_id(id_thread) {
+        if (id_thread >= MAX_THREADS) throw std::runtime_error("invalid thread id");
+        for (uint16_t i = 0; i < MAX_TABLES; ++i) {
+            _tables[i] = &global_pool[id_thread * MAX_TABLES + i];
+        }
+    }
 
-		uint16_t free_offset = tables[number_table]->search();
-		if (free_offset < max_offset) {
-			tables[number_table]->add_value(value, free_offset);
-			uint16_t _num_tab = number_table + (thread_id * 16);
-			return { counter.fetch_add(1, std::memory_order_acq_rel), {_num_tab, free_offset} };
-		}
+    inline Node allocate(T value) {
+        while (_flag_tables.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
 
-		++number_table;
+        uint16_t table = _current_table.load(std::memory_order_acquire);
+        uint16_t offset = _tables[table].load(std::memory_order_acquire)->next();
 
-		if (number_table < max_tables) {
-			offset = 1;
-			tables[number_table]->add_value(value, 0);
-			uint16_t _num_tab = number_table + (thread_id * 16);
-			return { counter.fetch_add(1, std::memory_order_acq_rel), {_num_tab, 0} };
-		}
+        if (offset < MAX_OFFSET) {
+            _tables[table].load(std::memory_order_acquire)->set_value(value, offset);
+            return make_node(table, offset);
+        }
 
-		return { counter.fetch_add(1, std::memory_order_acq_rel), _search_offset() };
-	}
-	
-	T deallocate(Node node) {
-		uint16_t _tbl = node.position.table;
-		uint16_t _off = node.position.offset;
+        bool _f{ false };
 
-		T _value = pool_tables[_tbl].ret_value(_off);
+        if (_flag_tables.compare_exchange_strong(_f, true, std::memory_order_acq_rel)) {
+            table = _current_table.fetch_add(1, std::memory_order_acq_rel);
+            if (table < MAX_TABLES - 1) {
+                _flag_tables.store(false, std::memory_order_relaxed);
+            }
+            else
+                throw std::runtime_error("Table overflow");
+        }
+            
+        return allocate(value);
+    }
 
-		return _value;
-	}
-	
-	Position _search_offset() {
-		for (uint16_t id_table = 0; Table<T>* _table : tables) {
-			uint16_t _offset = _table->search();
-			if (_offset < max_offset) {
-				return { static_cast<uint16_t>(id_table + thread_id * max_tables), _offset };
-			}
-			++id_table;
-		}
+    T deallocate(Node node) {
+        uint16_t table = node.position.table;
+        return global_pool[table].get_value(node.position.offset);
+    }
 
-		throw "table overflow";
-	}
-
-	~Allocator() = default;
+    static inline constexpr uint16_t MAX_TABLES = 32;
+    static inline constexpr uint16_t MAX_THREADS = 256;
+    static inline constexpr uint16_t MAX_OFFSET = 128;
+    static inline constexpr uint16_t POOL_SIZE = MAX_THREADS * MAX_TABLES;
 
 private:
-	static inline std::atomic<uint32_t> counter{0};							// Глобальный счетчик
+    inline Node make_node(uint16_t local_table, uint16_t offset) {
+        uint16_t table = local_table + (_current_thread_id * MAX_TABLES);
+        return {counter.fetch_add(1, std::memory_order_acq_rel), {table, offset} };
+    }
 
-	static inline constexpr size_t value_size = sizeof(T);					// Размер типа
-	static inline constexpr uint8_t max_offset = 64;						// MAX элементов в таблице
-	static inline constexpr uint8_t max_tables = 16;
-	static inline constexpr size_t max_pool_t = 4096;
+    static inline std::atomic<uint32_t> counter{ 0 };
 
-	static inline std::array<Table<T>, max_pool_t> pool_tables;				// Глобальный пул таблиц
-		
-	alignas(64) uint8_t thread_id { 0 };
-	alignas(16) uint16_t number_table{ 0 };									// Локальный счетчик текущей таблицы
-	uint16_t offset{ 0 };													// Локальный счетчик текущего смещения
-	
-	std::array<Table<T>*, 16> tables;										// Локальный список таблиц
+    static inline std::array<Table<T>, POOL_SIZE> global_pool;
+
+    uint8_t _current_thread_id{ 0 };
+    std::atomic<uint16_t> _current_table{0};
+    std::array<std::atomic<Table<T>*>, MAX_TABLES> _tables{};
+
+    std::atomic<bool> _flag_tables{ false };
 };
