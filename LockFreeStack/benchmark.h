@@ -110,11 +110,11 @@ static void test_capacity() {
     LockFreeStack<int>::_initial_stack();
 
     LockFreeStack<int> stack;
-    int count = 0;
+    int count = -1;
 
     try {
         while (true) {
-            stack.push(count++);
+            stack.push(++count);
         }
     }
     catch (const std::runtime_error& e) {
@@ -122,7 +122,7 @@ static void test_capacity() {
     }
 
     bool ok = true;
-    for (int i = count - 2; i >= 0; i--) {
+    for (int i = count - 1; i >= 0; i--) {
         if (stack.pop() != i) {
             ok = false;
             break;

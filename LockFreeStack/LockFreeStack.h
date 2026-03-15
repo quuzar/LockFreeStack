@@ -47,6 +47,7 @@ public:
         free_lock.lock();
         if (free_nodes.empty()) {
             free_lock.unlock();
+            alloc_.deallocate(_node);
             throw std::runtime_error("Stack overflow");
         }
         StackNode* _snode = free_nodes.back();
