@@ -93,6 +93,12 @@ struct alignas(128) Table {
 		next_free.fetch_sub(1, std::memory_order_release);
 		return search();
 	}
+
+	inline void clear() {
+		next_free.store(0);
+		std::queue<uint16_t> new_q;
+		free_nodes = std::move(new_q);
+	}
 private:
 	write_spinlock _queue_spin{};
 

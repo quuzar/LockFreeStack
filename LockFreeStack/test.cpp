@@ -1,6 +1,7 @@
 #include "allocator_test.h"
 #include "lockfreestack_test.h"
 #include "benchmark.h"
+#include "stres_test.h"
 
 #include <iostream>
 int main() {
@@ -13,4 +14,12 @@ int main() {
 	std::cout << "Benchmark started" << std::endl;
 	std::cout << "========================================\n";
 	run_benchmarks();
+
+
+	std::cout << "========================================\n";
+	std::cout << "Stres test started" << std::endl;
+	std::cout << "========================================\n";
+	
+	test();
 }
+

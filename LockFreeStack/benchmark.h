@@ -173,7 +173,8 @@ static void run_benchmarks() {
     test_independent(16, 250);
     test_independent(32, 125);
     test_independent(64, 64);
-    test_independent(128, 32);
+    test_independent(128, 64);
+    test_independent(256, 32);
 
     std::cout << "\n--- Many small stacks test ---\n";
     test_many_small(10, 1000);

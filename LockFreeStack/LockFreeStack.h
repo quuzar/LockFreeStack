@@ -13,6 +13,7 @@ public:
         for (auto& snode : snode_pool)
             free_nodes.push_back(&snode);
         free_lock.unlock();
+        Allocator<int>::clear();
     }
 
     LockFreeStack() {

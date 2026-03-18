@@ -60,10 +60,19 @@ public:
         if (_flag_tables.compare_exchange_strong(_f, true, std::memory_order_acq_rel)) {
             table = _current_table.fetch_add(1, std::memory_order_acq_rel);
             if (table < MAX_TABLES - 1) {
-                _flag_tables.store(false, std::memory_order_relaxed);
+                _flag_tables.store(false, std::memory_order_release);
             }
-            else
+            else {
+                for (int i = 0; Table<T>* free_table : _tables) {
+                    if (free_table->next() < MAX_OFFSET) {
+                        _current_table.store(i, std::memory_order_relaxed);
+                        _flag_tables.store(false, std::memory_order_release);
+                        return allocate(value);
+                    }
+                    ++i;
+                }
                 throw std::runtime_error("Table overflow");
+            }
         }
             
         return allocate(value);
@@ -78,6 +87,10 @@ public:
     static inline constexpr uint16_t MAX_OFFSET = Table<T>::SIZE;
     static inline constexpr uint16_t POOL_SIZE = MAX_THREADS * MAX_TABLES;
 
+    static inline void clear() {
+        for (auto& tbl : global_pool)
+            tbl.clear();
+    }
 private:
     inline Node make_node(uint16_t local_table, uint16_t offset) {
         uint16_t table = local_table + (_current_thread_id * MAX_TABLES);
@@ -85,12 +98,11 @@ private:
     }
 
     static inline std::atomic<uint32_t> counter{ 0 };
-
+    
     static inline std::array<Table<T>, POOL_SIZE> global_pool;
 
     uint8_t _current_thread_id{ 0 };
     std::atomic<uint16_t> _current_table{0};
     std::array<std::atomic<Table<T>*>, MAX_TABLES> _tables{};
-
     std::atomic<bool> _flag_tables{ false };
 };
